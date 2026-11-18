@@ -16,7 +16,7 @@ const CONFIG = {
     56: { name: "BNB Chain", rpc: "https://bsc.publicnode.com", explorer: "https://bscscan.com" },
     97: {
       name: "BNB Chain Testnet",
-      rpc: "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
+      rpc: "https://bsc-testnet.publicnode.com",
       explorer: "https://testnet.bscscan.com",
     },
   },
