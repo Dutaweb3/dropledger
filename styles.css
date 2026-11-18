@@ -42,7 +42,7 @@ body {
     var(--bg);
   background-attachment: fixed;
 }
-::selection { background: var(--ink); color: #171207; }
+::selection { background: var(--ink); color: #090b10; }
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .muted { color: var(--muted); }
@@ -213,10 +213,10 @@ textarea { resize: vertical; }
   border: 1.5px solid currentColor; border-radius: 5px; padding: 3px 8px;
   transform: rotate(-2deg); display: inline-block;
 }
-.badge.Active { color: var(--mint); background: rgba(61, 220, 151, .08); }
-.badge.Paused { color: var(--amber); background: rgba(242, 176, 78, .08); }
-.badge.Ended { color: var(--muted); background: rgba(169, 158, 134, .08); }
-.badge.TGE { color: var(--blue); background: rgba(143, 188, 255, .08); }
+.badge.Active { color: var(--mint); background: rgba(86, 171, 148, .08); }
+.badge.Paused { color: var(--amber); background: rgba(194, 168, 120, .08); }
+.badge.Ended { color: var(--muted); background: rgba(152, 165, 184, .08); }
+.badge.TGE { color: var(--blue); background: rgba(147, 180, 221, .08); }
 /* Segmented ledger progress bar */
 .progress { height: 8px; background: var(--bg2); margin: 0 16px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
 .progress .bar {

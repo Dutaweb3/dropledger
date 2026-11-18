@@ -33,7 +33,8 @@
     <h2>Track every project. Prove every task.</h2>
     <p>DropLedger records the projects you follow, the tasks you finish, the
     wallet you used, and when you last acted — stored on-chain under your
-    Agent ID. Connect your wallet to open your journal.</p>
+    Agent ID. Connect your wallet to open your journal — or browse any
+    journal below, no wallet needed.</p>
     <button class="btn primary big" data-connect>Connect wallet</button>
     <p class="fineprint">Writing needs an Agent ID (claim one free in the
     Binance App). Reading is public — anyone can view a journal.</p>
@@ -50,6 +51,7 @@
       <label class="sr-only" for="viewAddr">View another journal by address</label>
       <input id="viewAddr" type="text" placeholder="View another journal: paste a wallet address" autocomplete="off">
       <button id="viewBtn" class="btn small">View</button>
+      <button id="exampleBtn" class="btn small ghost">Example journal</button>
       <button id="myJournalBtn" class="btn small ghost hidden">My journal</button>
     </div>
 
@@ -81,7 +83,7 @@
     </section>
 
     <section>
-      <h2 class="section-title">Your projects</h2>
+      <h2 id="projectsTitle" class="section-title">Your projects</h2>
       <div id="projectList" class="projects"></div>
       <p id="emptyState" class="muted hidden">No projects yet. Add your first
       project above — your journal starts with one entry.</p>

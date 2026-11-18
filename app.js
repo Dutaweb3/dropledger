@@ -22,6 +22,14 @@ const CONFIG = {
   },
 };
 
+// Demo journal shown by default on testnet (the deployer's journal — it
+// holds the "Fungo" test project). Lets first-time visitors see a real
+// journal without connecting a wallet.
+const EXAMPLE_JOURNAL = "0x350A851D8BB7A2A1202f6D411d57707734375b52";
+// Default chain: mainnet once the contract is deployed there, else testnet.
+const DEFAULT_CHAIN =
+  CONFIG.contracts[56] !== "0x0000000000000000000000000000000000000000" ? 56 : 97;
+
 const ABI = [
   "function createProject(string name, string chainName, string walletLabel, string notes) returns (uint256)",
   "function updateProjectStatus(uint256 projectId, uint8 status)",
@@ -41,11 +49,13 @@ const STATUS = ["Active", "Paused", "Ended", "TGE"];
 const KIND = ["Social", "On-chain", "Testnet", "Daily", "Weekly", "Other"];
 
 /* ---------------- state ---------------- */
-let provider = null; // BrowserProvider
+let provider = null; // BrowserProvider (only when a wallet is connected)
+let readProvider = null; // JsonRpcProvider (public RPC) — reads work without a wallet
 let signer = null;
 let account = null;
-let chainId = null;
-let readContract = null; // connected to provider
+let chainId = DEFAULT_CHAIN; // app-selected chain (56 or 97)
+let walletChainId = null; // chain the connected wallet is actually on
+let readContract = null; // connected to readProvider
 let writeContract = null; // connected to signer
 let viewing = null; // address whose journal is shown (account by default)
 let canWrite = false;
@@ -93,6 +103,25 @@ function contractAddress() {
   return a && a !== ethers.ZeroAddress ? a : null;
 }
 
+// Reads always go through the public RPC, so they work with or without a
+// connected wallet.
+function buildReadContract() {
+  const addr = contractAddress();
+  if (!addr) {
+    readContract = null;
+    readProvider = null;
+    return;
+  }
+  readProvider = new ethers.JsonRpcProvider(CONFIG.chains[chainId].rpc);
+  readContract = new ethers.Contract(addr, ABI, readProvider);
+}
+
+// Writes need a connected wallet; rebuilt whenever the chain changes.
+function buildWriteContract() {
+  const addr = contractAddress();
+  writeContract = addr && signer ? new ethers.Contract(addr, ABI, signer) : null;
+}
+
 async function connect() {
   if (!window.ethereum) {
     toast("No wallet found. Open this page in Binance Wallet or MetaMask.", "error");
@@ -103,8 +132,7 @@ async function connect() {
     const accounts = await provider.send("eth_requestAccounts", []);
     account = accounts[0];
     signer = await provider.getSigner();
-    const net = await provider.getNetwork();
-    chainId = Number(net.chainId);
+    walletChainId = Number((await provider.getNetwork()).chainId);
     viewing = account;
     setupWalletListeners();
     await refreshAll();
@@ -155,26 +183,18 @@ async function switchNetwork(target) {
 
 /* ---------------- loading & rendering ---------------- */
 async function refreshAll() {
-  hide($("#connectPrompt"));
+  // The app section is always visible; only the hero hides once connected.
+  if (account) hide($("#connectPrompt"));
+  else show($("#connectPrompt"));
   show($("#app"));
-  $("#accountLabel").textContent = shortAddr(account);
-  const supported = chainId === 56 || chainId === 97;
-  $("#networkLabel").textContent = supported
-    ? CONFIG.chains[chainId].name
-    : "Unsupported network (" + chainId + ")";
+  $("#accountLabel").textContent = account ? shortAddr(account) : "Read-only mode";
+  $("#networkLabel").textContent = CONFIG.chains[chainId].name;
   $("#switchNetBtn").textContent =
     chainId === 56 ? "Switch to testnet" : "Switch to mainnet";
-
-  // Wrong-network state.
-  if (!supported) {
-    $("#netBanner").innerHTML =
-      "You are on an unsupported network. DropLedger runs on BNB Chain " +
-      "(mainnet 56) and BNB Chain Testnet (97).";
-    show($("#netBanner"));
-    hide($("#projectList").parentElement);
-    return;
-  }
   hide($("#netBanner"));
+
+  buildReadContract();
+  buildWriteContract();
 
   // Not-deployed state.
   const addr = contractAddress();
@@ -183,16 +203,24 @@ async function refreshAll() {
       "DropLedger is not deployed on " + CONFIG.chains[chainId].name +
       " yet. Switch networks or check back after deployment.";
     show($("#notDeployedBanner"));
+    $("#statProjects").textContent = "–";
+    $("#statDone").textContent = "–";
+    $("#statLeft").textContent = "–";
+    $("#projectList").innerHTML = "";
+    hide($("#emptyState"));
     return;
   }
   hide($("#notDeployedBanner"));
 
-  readContract = new ethers.Contract(addr, ABI, provider);
-  writeContract = new ethers.Contract(addr, ABI, signer);
-
-  // Agent ID gate (only matters when viewing your own journal).
-  canWrite = viewing === account && (await readContract.isAgentHolder(account));
-  if (viewing === account && !canWrite) {
+  // Agent ID gate (only matters when viewing your own journal with a wallet).
+  canWrite = !!(account && viewing === account &&
+    (await readContract.isAgentHolder(account)));
+  if (!account) {
+    $("#noAgentBanner").innerHTML =
+      "You are browsing in <b>read-only</b> mode. Connect your wallet to " +
+      "open your own journal and write entries (needs an Agent ID).";
+    show($("#noAgentBanner"));
+  } else if (viewing === account && !canWrite) {
     $("#noAgentBanner").innerHTML =
       "This wallet holds no Agent ID, so this journal is <b>read-only</b>. " +
       "Writing needs an Agent ID — claim one free in the Binance App " +
@@ -202,7 +230,9 @@ async function refreshAll() {
     hide($("#noAgentBanner"));
   }
   $("#addProjectWrap").classList.toggle("hidden", !canWrite);
-  $("#myJournalBtn").classList.toggle("hidden", viewing === account);
+  $("#myJournalBtn").classList.toggle("hidden", !account || viewing === account);
+  $("#projectsTitle").textContent =
+    account && viewing === account ? "Your projects" : "Projects";
 
   await loadJournal();
 }
@@ -211,6 +241,16 @@ async function loadJournal() {
   const list = $("#projectList");
   list.innerHTML = "";
   projectsCache = [];
+  if (!viewing) {
+    $("#statProjects").textContent = "–";
+    $("#statDone").textContent = "–";
+    $("#statLeft").textContent = "–";
+    $("#emptyState").textContent =
+      "No journal selected. Paste a wallet address above, open the example " +
+      "journal, or connect your wallet.";
+    show($("#emptyState"));
+    return;
+  }
   try {
     const [pc, done, left] = await readContract.getStats(viewing);
     $("#statProjects").textContent = pc.toString();
@@ -218,6 +258,9 @@ async function loadJournal() {
     $("#statLeft").textContent = left.toString();
 
     const count = Number(pc);
+    $("#emptyState").textContent =
+      "No projects yet. Add your first project above — your journal starts " +
+      "with one entry.";
     $("#emptyState").classList.toggle("hidden", count !== 0);
     for (let i = 0; i < count; i++) {
       const p = await readContract.getProject(viewing, i);
@@ -379,12 +422,29 @@ async function refreshStatsOnly() {
 /* ---------------- writes ---------------- */
 async function writeTx(fn, okMsg) {
   try {
+    if (!signer || !writeContract) {
+      toast("Connect your wallet to write.", "error");
+      throw new Error("no wallet");
+    }
+    // The app chain and the wallet chain can differ (reads use the public
+    // RPC). Never send a write to the wrong chain — switch first, then
+    // ask the user to retry the click.
+    const wnet = await provider.getNetwork();
+    if (Number(wnet.chainId) !== chainId) {
+      await switchNetwork(chainId);
+      toast("Wallet switched to " + CONFIG.chains[chainId].name +
+        ". Please try again.", "ok");
+      const retry = new Error("chain switched, retry");
+      retry.retry = true;
+      throw retry;
+    }
     toast("Waiting for your confirmation in the wallet…");
     const tx = await fn();
     toast("Transaction sent — waiting for confirmation…");
     await tx.wait();
     toast(okMsg, "ok");
   } catch (e) {
+    if (e && e.retry) throw e; // already explained above, no error toast
     toast("Transaction failed: " + friendlyError(e), "error");
     throw e;
   }
@@ -404,10 +464,19 @@ $$("[data-connect]").forEach((b) => b.addEventListener("click", connect));
 
 $("#switchNetBtn").addEventListener("click", async () => {
   const target = chainId === 56 ? 97 : 56;
-  try {
-    await switchNetwork(target);
-  } catch (e) {
-    toast("Could not switch network: " + friendlyError(e), "error");
+  localStorage.setItem("dl-chain", String(target));
+  if (account) {
+    // With a wallet, switch the wallet itself (chainChanged reloads the
+    // page; the saved chain is restored by init()).
+    try {
+      await switchNetwork(target);
+    } catch (e) {
+      toast("Could not switch network: " + friendlyError(e), "error");
+    }
+  } else {
+    // Read-only: just point the reads at the other chain.
+    chainId = target;
+    await refreshAll();
   }
 });
 
@@ -418,12 +487,21 @@ $("#viewBtn").addEventListener("click", async () => {
     return;
   }
   viewing = v;
+  history.replaceState(null, "", "?address=" + v);
+  await refreshAll();
+});
+
+$("#exampleBtn").addEventListener("click", async () => {
+  $("#viewAddr").value = EXAMPLE_JOURNAL;
+  viewing = EXAMPLE_JOURNAL;
+  history.replaceState(null, "", "?address=" + EXAMPLE_JOURNAL);
   await refreshAll();
 });
 
 $("#myJournalBtn").addEventListener("click", async () => {
   viewing = account;
   $("#viewAddr").value = "";
+  history.replaceState(null, "", location.pathname);
   await refreshAll();
 });
 
@@ -447,8 +525,21 @@ $("#addProjectForm").addEventListener("submit", async (e) => {
   await loadJournal();
 });
 
-// Auto-reconnect if the wallet is already authorized.
+// Boot: read-only mode by default (public RPC), wallet is optional.
+// Auto-reconnects if the wallet is already authorized.
 (async function init() {
+  // Restore the last-used chain (defaults to testnet until mainnet deploys).
+  try {
+    const saved = Number(localStorage.getItem("dl-chain"));
+    if (saved === 56 || saved === 97) chainId = saved;
+  } catch (e) { /* storage unavailable — keep the default chain */ }
+
+  // Deep link: ?address=0x... opens that journal directly.
+  try {
+    const q = new URLSearchParams(location.search).get("address");
+    if (q && ethers.isAddress(q)) viewing = q;
+  } catch (e) { /* ignore a malformed query string */ }
+
   if (window.ethereum) {
     try {
       provider = new ethers.BrowserProvider(window.ethereum);
@@ -456,11 +547,14 @@ $("#addProjectForm").addEventListener("submit", async (e) => {
       if (accounts.length > 0) {
         account = accounts[0];
         signer = await provider.getSigner();
-        chainId = Number((await provider.getNetwork()).chainId);
+        walletChainId = Number((await provider.getNetwork()).chainId);
         viewing = account;
         setupWalletListeners();
-        await refreshAll();
       }
-    } catch (e) { /* stay on the connect prompt */ }
+    } catch (e) { /* stay in read-only mode */ }
   }
+
+  // Default demo journal on testnet so first-time visitors see a real journal.
+  if (!viewing && chainId === 97) viewing = EXAMPLE_JOURNAL;
+  await refreshAll();
 })();
