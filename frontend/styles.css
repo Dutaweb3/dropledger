@@ -262,3 +262,14 @@ textarea { resize: vertical; }
   .stat .num { font-size: 25px; }
   .brand h1 { font-size: 19px; }
 }
+
+
+/* Desktop: use the wider screen instead of a narrow column. */
+@media (min-width: 1024px) {
+  main { max-width: 1080px; padding: 28px 24px 64px; }
+  footer { max-width: 1080px; }
+  .projects { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .projects .card { margin-bottom: 0; }
+  .stats { gap: 14px; }
+  .stat .num { font-size: 34px; }
+}
