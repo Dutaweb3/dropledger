@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DropLedger — your airdrop farming journal, on-chain</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<meta name="description" content="DropLedger is an on-chain journal for airdrop farmers. Track your projects, tasks, wallets and last activity — recorded under your Agent ID.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.2/dist/ethers.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img class="logo-img" src="assets/logo.png" alt="DropLedger logo">
+    <div>
+      <h1>DropLedger</h1>
+      <p class="tagline">Your farming journal, on-chain.</p>
+    </div>
+  </div>
+  <button id="connectBtn" class="btn primary">Connect wallet</button>
+</header>
+
+<main>
+  <div id="netBanner" class="banner warn hidden"></div>
+  <div id="noAgentBanner" class="banner info hidden"></div>
+  <div id="notDeployedBanner" class="banner warn hidden"></div>
+
+  <section id="connectPrompt" class="card center">
+    <h2>Track every project. Prove every task.</h2>
+    <p>DropLedger records the projects you follow, the tasks you finish, the
+    wallet you used, and when you last acted — stored on-chain under your
+    Agent ID. Connect your wallet to open your journal.</p>
+    <button class="btn primary big" data-connect>Connect wallet</button>
+    <p class="fineprint">Writing needs an Agent ID (claim one free in the
+    Binance App). Reading is public — anyone can view a journal.</p>
+  </section>
+
+  <section id="app" class="hidden">
+    <div class="addrbar">
+      <span id="accountLabel" class="addr"></span>
+      <span id="networkLabel" class="pill"></span>
+      <button id="switchNetBtn" class="btn small ghost">Switch network</button>
+    </div>
+
+    <div class="viewbar">
+      <label class="sr-only" for="viewAddr">View another journal by address</label>
+      <input id="viewAddr" type="text" placeholder="View another journal: paste a wallet address" autocomplete="off">
+      <button id="viewBtn" class="btn small">View</button>
+      <button id="myJournalBtn" class="btn small ghost hidden">My journal</button>
+    </div>
+
+    <section class="stats">
+      <div class="stat"><span id="statProjects" class="num">–</span><span class="lbl">Projects</span></div>
+      <div class="stat"><span id="statDone" class="num green">–</span><span class="lbl">Tasks done</span></div>
+      <div class="stat"><span id="statLeft" class="num amber">–</span><span class="lbl">Tasks left</span></div>
+    </section>
+
+    <section id="addProjectWrap" class="card">
+      <button id="toggleAddProject" class="btn block" aria-expanded="false">＋ Add a project</button>
+      <form id="addProjectForm" class="hidden">
+        <label>Project name
+          <input name="name" required maxlength="80" placeholder="e.g. Fungo">
+        </label>
+        <div class="row2">
+          <label>Chain
+            <input name="chainName" maxlength="40" placeholder="e.g. Ethereum">
+          </label>
+          <label>Wallet label
+            <input name="walletLabel" maxlength="40" placeholder="e.g. main / agent">
+          </label>
+        </div>
+        <label>Notes <span class="opt">(optional)</span>
+          <textarea name="notes" rows="2" maxlength="500" placeholder="Anything to remember — never paste seeds or private keys."></textarea>
+        </label>
+        <button type="submit" class="btn primary block">Save project on-chain</button>
+      </form>
+    </section>
+
+    <section>
+      <h2 class="section-title">Your projects</h2>
+      <div id="projectList" class="projects"></div>
+      <p id="emptyState" class="muted hidden">No projects yet. Add your first
+      project above — your journal starts with one entry.</p>
+    </section>
+  </section>
+</main>
+
+<footer>
+  <p>DropLedger — an on-chain journal for airdrop farmers. Entries are public
+  on-chain by design. Never log seeds, private keys, or secrets.</p>
+  <p>Built for the Agent ID Hackathon. Agent ID is required to write;
+  reading is free for everyone.</p>
+</footer>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<!-- Project card template -->
+<template id="projectTpl">
+  <article class="card project">
+    <button class="proj-head">
+      <span class="proj-main">
+        <span class="proj-name"></span>
+        <span class="proj-meta"></span>
+      </span>
+      <span class="proj-right">
+        <span class="badge"></span>
+        <span class="chev">▾</span>
+      </span>
+    </button>
+    <div class="progress"><div class="bar"></div></div>
+    <p class="proj-sub"></p>
+    <div class="proj-body hidden">
+      <p class="proj-notes"></p>
+      <div class="proj-actions">
+        <label>Status
+          <select class="statusSel">
+            <option value="0">Active</option>
+            <option value="1">Paused</option>
+            <option value="2">Ended</option>
+            <option value="3">TGE</option>
+          </select>
+        </label>
+        <button class="btn small ghost editNotesBtn">Edit notes</button>
+      </div>
+      <form class="notesForm hidden">
+        <textarea rows="2" maxlength="500"></textarea>
+        <button type="submit" class="btn small primary">Save notes</button>
+      </form>
+      <h3>Tasks</h3>
+      <ul class="tasks"></ul>
+      <form class="addTaskForm">
+        <input name="title" required maxlength="120" placeholder="New task — e.g. Weekly quest">
+        <select name="kind">
+          <option value="0">Social</option>
+          <option value="1">On-chain</option>
+          <option value="2">Testnet</option>
+          <option value="3">Daily</option>
+          <option value="4">Weekly</option>
+          <option value="5">Other</option>
+        </select>
+        <label class="check"><input type="checkbox" name="recurring"> Recurring</label>
+        <button type="submit" class="btn small primary">Add task</button>
+      </form>
+      <details class="batch">
+        <summary>Add several tasks at once (one transaction)</summary>
+        <textarea rows="3" placeholder="One task per line — e.g.&#10;Connect wallet&#10;Join Discord&#10;Bridge to testnet"></textarea>
+        <select>
+          <option value="0">Social</option>
+          <option value="1">On-chain</option>
+          <option value="2">Testnet</option>
+          <option value="3">Daily</option>
+          <option value="4">Weekly</option>
+          <option value="5">Other</option>
+        </select>
+        <button type="button" class="btn small primary batchBtn">Add all at once</button>
+      </details>
+    </div>
+  </article>
+</template>
+
+<template id="taskTpl">
+  <li class="task">
+    <label>
+      <input type="checkbox" class="taskDone">
+      <span class="task-title"></span>
+    </label>
+    <span class="task-meta"></span>
+  </li>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

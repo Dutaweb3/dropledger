@@ -1,0 +1,14 @@
+# Secrets — never commit
+testnet-deployer.key
+*.key
+*.pem
+.env
+
+# Foundry build outputs
+contract/cache/
+contract/out/
+contract/broadcast/
+contract/lib-forge-std/
+
+# Spare logo variants — kept on disk, not in the public repo
+frontend/assets/media-generation-*
